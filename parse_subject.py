@@ -176,12 +176,16 @@ def process_dicom_file(dicom_file, dirout_subject):
         dirout_loop = os.path.join(dirout_subject, first_timestamp)
         os.makedirs(dirout_loop, exist_ok=True)
         generate_loop_files(one_loop, dirout_loop)
+        return first_timestamp
     except Exception as e:
         print(f"Error processing {dicom_file}: {e}")
+        return 'error'
 
 
 def parse_subject(dir_subject, dir_out):
     print(dir_subject)
+
+    dirout_subject = ""
 
     for root, dirs, files in os.walk(dir_subject):
         dicom_files = [os.path.join(root, file) for file in files if file.endswith(".dcm")]
@@ -191,15 +195,28 @@ def parse_subject(dir_subject, dir_out):
             first_dicom_file = dicom_files[0]
             one_loop = parse_dicom(first_dicom_file)
             first_timestamp = one_loop[0]['time_stamp']
-            dirout_subject = os.path.join(dir_out, first_timestamp)
+            dirout_subject = os.path.join(dir_out, f"__temp_{first_timestamp}") # temporary, will be renamed
             os.makedirs(dirout_subject, exist_ok=True)
 
             # Process the rest of the files in parallel
             with ProcessPoolExecutor(max_workers = 8) as executor:
                 try:
-                    executor.map(process_dicom_file, dicom_files, [dirout_subject] * len(dicom_files))
+                    results = executor.map(process_dicom_file, dicom_files, [dirout_subject] * len(dicom_files))
                 except Exception as e:
                     print(f"Error in ProcessPoolExecutor: {e}")
+
+    global_min_time_stamp = float('inf')
+    global_min_time_stamp_str = ""
+
+    for min_time_stamp in results:
+        if float(min_time_stamp) < global_min_time_stamp:
+            global_min_time_stamp = float(min_time_stamp)
+            global_min_time_stamp_str = min_time_stamp
+    
+    # print("Global Min Time Stamp Str: ", global_min_time_stamp_str)
+
+    new_dirout_subject = os.path.join(dir_out, global_min_time_stamp_str)
+    os.rename(dirout_subject, new_dirout_subject)
 
 
 def main():
